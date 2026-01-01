@@ -30,6 +30,12 @@ public class PersistenceAdapter implements AccountPort, TransactionPort {
     }
 
     @Override
+    public Optional<Account> loadLocked(UUID accountId) {
+        return accountRepository.findByIdLocked(accountId)
+                .map(AccountJpaEntity::toDomain);
+    }
+
+    @Override
     public Transaction save(Transaction transaction) {
         TransactionJpaEntity entity = TransactionJpaEntity.fromDomain(transaction);
         TransactionJpaEntity saved = transactionRepository.save(entity);

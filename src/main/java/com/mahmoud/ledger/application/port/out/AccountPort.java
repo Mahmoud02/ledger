@@ -8,4 +8,6 @@ public interface AccountPort {
     Account save(Account account);
 
     Optional<Account> load(UUID accountId);
+
+    Optional<Account> loadLocked(UUID accountId);
 }

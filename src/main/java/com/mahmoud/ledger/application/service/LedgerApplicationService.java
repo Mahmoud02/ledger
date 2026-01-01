@@ -59,7 +59,7 @@ public class LedgerApplicationService
 
         // 3. Update Accounts (Atomic balance update)
         for (Posting posting : transaction.getPostings()) {
-            Account account = accountPort.load(posting.getAccountId())
+            Account account = accountPort.loadLocked(posting.getAccountId())
                     .orElseThrow(() -> new IllegalArgumentException("Account not found: " + posting.getAccountId()));
 
             account.postPosting(posting);
