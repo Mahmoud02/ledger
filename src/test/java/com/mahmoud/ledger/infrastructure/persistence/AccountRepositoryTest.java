@@ -23,7 +23,7 @@ class AccountRepositoryTest {
     private AccountRepository accountRepository;
 
     @Test
-    void testFindByIdLocked() {
+    void given_PersistedAccount_When_FindByIdLocked_Then_ReturnsAccount() {
         // Given
         UUID id = UUID.randomUUID();
         AccountJpaEntity entity = new AccountJpaEntity(
@@ -45,7 +45,7 @@ class AccountRepositoryTest {
     }
 
     @Test
-    void testSaveAndLoad() {
+    void given_NewAccountEntity_When_Saved_Then_CanBeRetrieved() {
         UUID id = UUID.randomUUID();
         AccountJpaEntity entity = new AccountJpaEntity(
                 id,
