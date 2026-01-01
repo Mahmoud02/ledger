@@ -1,0 +1,12 @@
+package com.mahmoud.ledger.application.port.in;
+
+public record CreateAccountCommand(String name, String currency) {
+    public CreateAccountCommand {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Account name cannot be empty");
+        }
+        if (currency == null || currency.isBlank()) {
+            throw new IllegalArgumentException("Currency cannot be empty");
+        }
+    }
+}
