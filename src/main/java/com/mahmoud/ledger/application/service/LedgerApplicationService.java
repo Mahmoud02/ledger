@@ -31,10 +31,10 @@ public class LedgerApplicationService
     @Override
     @Transactional
     public UUID createAccount(CreateAccountCommand command) {
-        UUID id = UUID.randomUUID();
-        Account account = Account.create(id, command.name(), command.currency());
+        UUID accountId = UUID.randomUUID();
+        Account account = Account.create(accountId, command.name(), command.type(), command.currency());
         accountPort.save(account);
-        return id;
+        return accountId;
     }
 
     @Override

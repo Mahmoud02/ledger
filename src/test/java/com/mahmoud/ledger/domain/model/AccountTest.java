@@ -10,7 +10,7 @@ class AccountTest {
     @Test
     void testPostDebitIncreasesAssetBalance() {
         // Asset Account: Debit = Increase
-        Account account = Account.create(UUID.randomUUID(), "Test Main", "USD");
+        Account account = Account.create(UUID.randomUUID(), "Test Main", AccountType.ASSET, "USD");
 
         Posting debit = new Posting(account.getId(), Money.of(new BigDecimal("100"), "USD"), Posting.Type.DEBIT);
         account.postPosting(debit);
@@ -21,7 +21,7 @@ class AccountTest {
     @Test
     void testPostCreditDecreasesAssetBalance() {
         // Asset Account: Credit = Decrease
-        Account account = Account.create(UUID.randomUUID(), "Test Main", "USD");
+        Account account = Account.create(UUID.randomUUID(), "Test Main", AccountType.ASSET, "USD");
 
         // First add some money
         account.postPosting(new Posting(account.getId(), Money.of(new BigDecimal("100"), "USD"), Posting.Type.DEBIT));
@@ -35,9 +35,19 @@ class AccountTest {
 
     @Test
     void testCurrencyMismatchThrowsException() {
-        Account account = Account.create(UUID.randomUUID(), "Test USD", "USD");
+        Account account = Account.create(UUID.randomUUID(), "Test USD", AccountType.ASSET, "USD");
         Posting euroPosting = new Posting(account.getId(), Money.of(new BigDecimal("100"), "EUR"), Posting.Type.DEBIT);
 
         assertThrows(IllegalArgumentException.class, () -> account.postPosting(euroPosting));
+    }
+
+    @Test
+    void testEquityAccountIncreasesOnCredit() {
+        Account account = Account.create(UUID.randomUUID(), "Test Equity", AccountType.EQUITY, "USD");
+
+        Posting credit = new Posting(account.getId(), Money.of(new BigDecimal("100"), "USD"), Posting.Type.CREDIT);
+        account.postPosting(credit);
+
+        assertEquals(new BigDecimal("100"), account.getBalance().amount());
     }
 }

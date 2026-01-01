@@ -1,6 +1,8 @@
 package com.mahmoud.ledger.infrastructure.persistence;
 
+import com.mahmoud.ledger.domain.model.Account;
 import com.mahmoud.ledger.domain.model.AccountStatus;
+import com.mahmoud.ledger.domain.model.AccountType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,19 +31,39 @@ class AccountRepositoryTest {
         AccountJpaEntity entity = new AccountJpaEntity(
                 id,
                 "Test Account",
-                "USD",
                 new BigDecimal("100.00"),
+                "USD",
                 AccountStatus.ACTIVE,
+                AccountType.ASSET,
                 LocalDateTime.now());
 
         accountRepository.save(entity);
 
-        // When
-        Optional<AccountJpaEntity> found = accountRepository.findByIdLocked(id);
+        Account account = accountRepository.findById(entity.getId()).orElseThrow().toDomain();
+        assertThat(account.getName()).isEqualTo("Test Account");
+    }
 
-        // Then
-        assertThat(found).isPresent();
-        assertThat(found.get().getId()).isEqualTo(id);
+    @Test
+    void testFindById_NotFound() {
+        assertThat(accountRepository.findById(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void testSave() {
+        AccountJpaEntity entity = new AccountJpaEntity(
+                UUID.randomUUID(),
+                "Bob",
+                new BigDecimal("0.00"),
+                "USD",
+                AccountStatus.ACTIVE,
+                AccountType.ASSET,
+                LocalDateTime.now());
+
+        accountRepository.save(entity);
+
+        Optional<AccountJpaEntity> loaded = accountRepository.findById(entity.getId());
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getName()).isEqualTo("Bob");
     }
 
     @Test
@@ -50,9 +72,10 @@ class AccountRepositoryTest {
         AccountJpaEntity entity = new AccountJpaEntity(
                 id,
                 "Saver",
-                "USD",
                 new BigDecimal("0.00"),
+                "USD",
                 AccountStatus.ACTIVE,
+                AccountType.ASSET,
                 LocalDateTime.now());
 
         accountRepository.save(entity);

@@ -7,21 +7,25 @@ import java.util.UUID;
 public class Account {
     private final UUID id;
     private final String name;
+    private final AccountType type;
     private Money balance;
     private AccountStatus status;
     private final LocalDateTime createdAt;
 
-    public Account(UUID id, String name, Money balance, AccountStatus status, LocalDateTime createdAt) {
+    public Account(UUID id, String name, AccountType type, Money balance, AccountStatus status,
+            LocalDateTime createdAt) {
         this.id = id;
         this.name = name;
+        this.type = type;
         this.balance = balance;
         this.status = status;
         this.createdAt = createdAt;
     }
 
-    public static Account create(UUID id, String name, String currencyCode) {
+    public static Account create(UUID id, String name, AccountType type, String currencyCode) {
         // Initialize with ZERO money in the given currency
-        return new Account(id, name, Money.of(BigDecimal.ZERO, currencyCode), AccountStatus.ACTIVE,
+        return new Account(id, name, type, Money.of(BigDecimal.ZERO, currencyCode),
+                AccountStatus.ACTIVE,
                 LocalDateTime.now());
     }
 
@@ -30,13 +34,29 @@ public class Account {
             throw new IllegalArgumentException("Posting currency mismatch");
         }
 
-        // Update balance logic:
-        // Asset Account: Debit increases, Credit decreases.
-        // We'll assume these are Asset accounts for now.
-        if (posting.getType() == Posting.Type.DEBIT) {
-            this.balance = this.balance.add(posting.getAmount());
+        // Update balance logic based on Account Type
+        if (type == AccountType.ASSET || type == AccountType.EXPENSE) {
+            // Normal (Asset) Behavior: Debit +, Credit -
+            if (posting.getType() == Posting.Type.DEBIT) {
+                this.balance = this.balance.add(posting.getAmount());
+            } else {
+                Money newBalance = this.balance.subtract(posting.getAmount());
+                if (newBalance.amount().signum() < 0) {
+                    throw new IllegalStateException("Insufficient funds");
+                }
+                this.balance = newBalance;
+            }
         } else {
-            this.balance = this.balance.subtract(posting.getAmount());
+            // Inverted (Equity/Liability) Behavior: Credit +, Debit -
+            if (posting.getType() == Posting.Type.CREDIT) {
+                this.balance = this.balance.add(posting.getAmount());
+            } else {
+                Money newBalance = this.balance.subtract(posting.getAmount());
+                if (newBalance.amount().signum() < 0) {
+                    throw new IllegalStateException("Insufficient funds");
+                }
+                this.balance = newBalance;
+            }
         }
     }
 
@@ -46,6 +66,10 @@ public class Account {
 
     public String getName() {
         return name;
+    }
+
+    public AccountType getType() {
+        return type;
     }
 
     public Money getBalance() {
