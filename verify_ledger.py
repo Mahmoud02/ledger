@@ -59,7 +59,6 @@ def main():
 
         # 3. Transaction: Alice pays Bob 100
         # Credit Alice (Decrease - assuming Asset), Debit Bob (Increase - assuming Asset)
-        # Note: Currency is now required in PostingCommand
         postings = [
             {"accountId": alice_id, "amount": 100, "currency": "USD", "type": "CREDIT"},
             {"accountId": bob_id, "amount": 100, "currency": "USD", "type": "DEBIT"}
@@ -73,14 +72,40 @@ def main():
         print(f"Alice Final Balance: {alice['balance']}")
         print(f"Bob Final Balance: {bob['balance']}")
         
-        # New balance checks.
-        # Credit to Asset Account -> Decrease. 0 - 100 = -100.
-        # Debit to Asset Account -> Increase. 0 + 100 = 100.
         alice_bal = float(alice['balance'])
         bob_bal = float(bob['balance'])
         
         if alice_bal == -100.0 and bob_bal == 100.0:
-            print("VERIFICATION SUCCESSFUL")
+            print("VERIFICATION SUCCESSFUL: Initial Transaction")
+        else:
+            print(f"VERIFICATION FAILED: Alice={alice_bal}, Bob={bob_bal}")
+            sys.exit(1)
+
+        # 5. Test Transfer Endpoint: Bob returns 50 to Alice
+        # Function: transferFunds(Source=Bob, Dest=Alice, Amount=50)
+        # Expected Logic (Asset): Credit Bob (100->50), Debit Alice (-100->-50)
+        print(f"Transferring 50 from Bob to Alice...")
+        transfer_resp = make_request("POST", f"{BASE_URL}/transfers", {
+            "fromAccountId": bob_id,
+            "toAccountId": alice_id,
+            "amount": 50,
+            "currency": "USD",
+            "description": "Returning half"
+        })
+        print(f"Transfer executed. ID: {transfer_resp}")
+
+        # 6. Check Final Balances
+        alice = get_account(alice_id)
+        bob = get_account(bob_id)
+        print(f"Alice Final Balance: {alice['balance']}")
+        print(f"Bob Final Balance: {bob['balance']}")
+
+        alice_bal = float(alice['balance'])
+        bob_bal = float(bob['balance'])
+        
+        # Expect: Alice = -50. Bob = 50.
+        if alice_bal == -50.0 and bob_bal == 50.0:
+            print("VERIFICATION SUCCESSFUL: Transfer Endpoint")
         else:
             print(f"VERIFICATION FAILED: Alice={alice_bal}, Bob={bob_bal}")
             sys.exit(1)

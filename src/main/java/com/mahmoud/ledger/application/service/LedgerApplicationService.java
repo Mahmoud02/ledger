@@ -6,6 +6,8 @@ import com.mahmoud.ledger.application.port.in.PostTransactionCommand;
 import com.mahmoud.ledger.application.port.in.PostingCommand;
 import com.mahmoud.ledger.application.port.in.PostTransactionUseCase;
 import com.mahmoud.ledger.application.port.in.RetrieveAccountUseCase;
+import com.mahmoud.ledger.application.port.in.TransferFundsCommand;
+import com.mahmoud.ledger.application.port.in.TransferFundsUseCase;
 import com.mahmoud.ledger.application.port.out.AccountPort;
 import com.mahmoud.ledger.application.port.out.TransactionPort;
 import com.mahmoud.ledger.domain.model.Account;
@@ -20,7 +22,8 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class LedgerApplicationService implements CreateAccountUseCase, PostTransactionUseCase, RetrieveAccountUseCase {
+public class LedgerApplicationService
+        implements CreateAccountUseCase, PostTransactionUseCase, RetrieveAccountUseCase, TransferFundsUseCase {
 
     private final AccountPort accountPort;
     private final TransactionPort transactionPort;
@@ -67,5 +70,29 @@ public class LedgerApplicationService implements CreateAccountUseCase, PostTrans
         transactionPort.save(transaction);
 
         return transaction.getId();
+    }
+
+    @Override
+    @Transactional
+    public UUID transferFunds(TransferFundsCommand command) {
+        // Construct the Postings
+        PostingCommand creditSource = new PostingCommand(
+                command.fromAccountId(),
+                command.amount(),
+                command.currency(),
+                Posting.Type.CREDIT);
+
+        PostingCommand debitDest = new PostingCommand(
+                command.toAccountId(),
+                command.amount(),
+                command.currency(),
+                Posting.Type.DEBIT);
+
+        // Delegate to the generic PostTransaction logic
+        PostTransactionCommand txCommand = new PostTransactionCommand(
+                command.description() != null ? command.description() : "Transfer",
+                java.util.List.of(creditSource, debitDest));
+
+        return postTransaction(txCommand);
     }
 }
