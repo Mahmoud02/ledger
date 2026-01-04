@@ -93,20 +93,30 @@ Financial systems are complex. The rules for money movement, currency validation
 ### 1. Strategic Design
 Strategic design deals with large-scale architectural decisions and how different parts of the system interact.
 
-*   **Bounded Context**: The "Ledger" is its own Bounded Context. It has a specific language (Ubiquitous Language) where terms like "Posting", "Debit", and "Credit" have precise mathematical meanings, distinct from how "Credit" might be used in a "Marketing" context (e.g., "Credits" as points).
-*   **Problem Space**: The business problem is tracking value exchange securely.
-*   **Solution Space**: Our Hexagonal Architecture, separating the Domain Core from the Web/Database adapters.
+#### Bounded Context
+*   **The Concept**: A logical boundary within which a specific domain model applies. Words have specific meanings inside this boundary that might be different outside.
+*   **In this Project**: The "Ledger" is its own Bounded Context. Inside here, terms like "Posting" or "Credit" have precise mathematical definitions. We do not care about "User Profiles" or "Marketing Emails"—those belong to other contexts.
+
+#### Ubiquitous Language
+*   **The Concept**: A common, rigorous language shared by developers and domain experts. Code should read like spoken language.
+*   **In this Project**: We explicitly use terms like `DepositFunds`, `TransferFunds`, and `makeTransfer` instead of generic `update` or `save`.
 
 ### 2. Tactical Design
-Tactical design focuses on the building blocks within the domain model.
+Tactical design focuses on the low-level building blocks within the domain model.
 
-*   **Aggregate Root**:
-    *   `Transaction`: This is the primary Aggregate. A transaction is a cluster of `Postings`. The Transaction ensures that the sum of all postings is **Zero** (Balance Check) before it can be created. You cannot persist a `Posting` without its parent `Transaction`.
-    *   `Account`: Manages its own balance and enforces locking rules.
-*   **Value Objects**:
-    *   `Money`: Represents an amount and a currency (e.g., `100 USD`). It is immutable. Using primitives like `BigDecimal` directly is dangerous (currency mismatch bugs).
-*   **Use Cases**:
-    *   We model user intents explicitly (`DepositFundsCommand`, `TransferFundsCommand`) rather than generic CRUD operations. This exposes the *Intent* of the business action.
+#### Aggregate Root
+*   **The Concept**: A cluster of domain objects that can be treated as a single unit. The Root is the only component that can be loaded or referenced directly. It ensures consistency.
+*   **In this Project**:
+    *   `Transaction`: The transaction is the consistency boundary. You cannot have a `Posting` without a `Transaction`. The Transaction Aggregate ensures that `Sum(Debits) == Sum(Credits)` before the object is even valid.
+
+#### Value Objects
+*   **The Concept**: Objects that are defined by their attributes, not their identity. They are immutable. $5 is always $5; it doesn't matter *which* $5 bill it is.
+*   **In this Project**:
+    *   `Money`: We never use raw `BigDecimal`. We use a `Money` object that encapsulates amount and currency, preventing errors like adding USD to EUR.
+
+#### Use Cases (Application Services)
+*   **The Concept**: A layer that orchestrates domain objects to perform a business task.
+*   **In this Project**: We expose intentional commands (`DepositFundsCommand`) rather than CRUD.
 
 ---
 
