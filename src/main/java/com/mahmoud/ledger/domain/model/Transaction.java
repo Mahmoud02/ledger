@@ -6,8 +6,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import com.mahmoud.ledger.domain.model.Money;
-import com.mahmoud.ledger.domain.model.Posting;
 
 public class Transaction {
     private final UUID id;

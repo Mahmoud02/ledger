@@ -4,7 +4,6 @@ import com.mahmoud.ledger.application.port.in.CreateAccountCommand;
 import com.mahmoud.ledger.application.port.in.PostTransactionCommand;
 import com.mahmoud.ledger.application.port.in.PostingCommand;
 import com.mahmoud.ledger.application.port.in.TransferFundsCommand;
-import com.mahmoud.ledger.domain.model.AccountType;
 import com.mahmoud.ledger.domain.model.Posting;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

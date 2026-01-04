@@ -56,21 +56,6 @@ class LedgerApplicationServiceTest {
     }
 
     @Test
-    void testCreateAccount_DuplicateName() {
-        // Given
-        UUID accountId = UUID.randomUUID();
-        CreateAccountCommand command = new CreateAccountCommand("Alice", "USD");
-        Account account = Account.create(accountId, "Alice", AccountType.ASSET, "USD");
-        // when(accountPort.load(accountId)).thenReturn(Optional.of(account)); //
-        // Unnecessary Stubbed
-
-        // When
-        UUID result = service.createAccount(command);
-        // The rest of the test logic for duplicate name would go here, e.g., mocking
-        // accountPort.findByName and asserting an exception.
-    }
-
-    @Test
     void testPostTransactionSuccess() {
         UUID acc1 = UUID.randomUUID();
         UUID acc2 = UUID.randomUUID();

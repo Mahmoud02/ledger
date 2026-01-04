@@ -2,200 +2,165 @@
 
 A robust, heavy-lifting accounting ledger service built with **Spring Boot**, **Domain Driven Design (DDD)**, and **Hexagonal Architecture (Ports and Adapters)**. It handles double-entry bookkeeping, concurrent transaction processing, and automated fee deduction.
 
-## 🚀 Features
+---
 
-*   **Domain Driven Design**: Rich domain model (`Transaction`, `Account`, `Posting`) encapsulating complex business rules, separated from persistence and delivery mechanisms.
-*   **Double-Entry Bookkeeping**: Ensures every transaction is balanced (Debits = Credits).
-*   **Hexagonal Architecture**: Core domain logic is isolated from external frameworks and databases.
-*   **Concurrency Control**: Uses **Pessimistic Locking** (`SELECT ... FOR UPDATE`) to prevent race conditions during concurrent transfers and balance updates.
-*   **Automated Transfer Fees**: 10% fee is automatically deducted from `E2E Transfers` and credited to the **Company Wallet**.
-*   **System Accounts Bootstrapping**: Automatically initializes "Genesis" (Equity) and "Company Revenue" (Asset) accounts on startup.
-*   **API Security**: Public API only allows creation of User Wallets (Assets), preventing manipulation of system accounts.
+##  Business Logic
 
-## 🏗 Architecture
+### 1. The Fundamental Challenge: Tracking Value
+In a financial system, the most critical requirement is **Tracking Money Movement**.
+A naive implementation might treat money like a mutable counter:
+`UPDATE accounts SET balance = balance + 100 WHERE id = Alice`
 
-The project follows strict Hexagonal Architecture principals:
+**Why this fails:**
+*   **No Audit Trail**: If Alice has $100 today and $50 tomorrow, you don't know *why*. Did she spend it? Was it stolen? Was it a bug?
+*   **Data Integrity**: If the database crashes mid-update (`Credit Alice` succeeds, `Debit Bob` fails), money effectively disappears or is created out of thin air.
 
-*   **Domain**: `com.mahmoud.ledger.domain` - Pure Java business logic (Entities, Value Objects).
-*   **Application**: `com.mahmoud.ledger.application` - Use Cases, Ports (Input/Output interfaces), and Services.
-*   **Infrastructure**: `com.mahmoud.ledger.infrastructure` - Adapters for Persistence (JPA/H2) and Web Layer (REST Controllers).
-
-## 🛠 System Accounts
-
-The system automatically bootstraps the following immutable accounts:
-
-| Account Name | Type | Interaction |
-| :--- | :--- | :--- |
-| **Genesis** | `EQUITY` | The source of all money entering the system (Deposits). |
-| **Company Revenue** | `ASSET` | Receives the 10% fee from user-to-user transfers. |
-
-## 🔌 API Reference
-
-### 1. Create a User Wallet
-Creates a new user account. Default type is `ASSET`.
-
-**POST** `/api/accounts`
-```json
-{
-  "name": "Alice Wallet",
-  "currency": "USD"
-}
-```
-
-### 2. Deposit Funds (Genesis -> User)
-To introduce money into the system, create a transaction allowing "Genesis" to credit the user.
-
-**POST** `/api/transactions`
-```json
-{
-  "description": "Deposit via Stripe",
-  "postings": [
-    {
-      "accountId": "00000000-0000-0000-0000-000000000001", // Genesis ID
-      "amount": 100.00,
-      "currency": "USD",
-      "type": "CREDIT"
-    },
-    {
-      "accountId": "<USER_UUID>",
-      "amount": 100.00,
-      "currency": "USD",
-      "type": "DEBIT"
-    }
-  ]
-}
-```
-
-### 3. Transfer Funds (User -> User) & Fee Deduction
-Transfers funds between users. If `revenueAccountId` is provided, a 10% fee is automatically calculated and diverted to the Company Revenue account.
-
-**POST** `/api/transfers`
-```json
-{
-  "fromAccountId": "<ALICE_UUID>",
-  "toAccountId": "<BOB_UUID>",
-  "amount": 50.00,
-  "currency": "USD",
-  "description": "Payment for services",
-  "revenueAccountId": "00000000-0000-0000-0000-000000000002" // Company Revenue ID
-}
-```
-
-**Outcome:**
-*   **Alice** is Debited 50.00
-*   **Bob** is Credited 45.00
-*   **Company Revenue** is Debited (Asset Increase) 5.00
-
-### 4. Get Account Balance
-**GET** `/api/accounts/{id}`
-
-## 🧪 Testing
-
-Run the full integration validation suite:
-```bash
-mvn test
-```
-Includes 25 comprehensive tests ensuring locking correctness, data integrity, and fee logic.
+**The Solution: Double-Entry Ledger**
+To solve this, we never "update" a balance directly. Instead, we record a **Transaction**—an immutable record of movement.
+*   **Rule**: `Sum(Credits) == Sum(Debits)`. Every dollar moved MUST come from somewhere and go somewhere.
+*   **Balance**: The balance is simply the derivative sum of all past transactions.
 
 ---
 
-## 📚 Business Logic: The Genesis Problem
+### 2. The Genesis Paradox: "Where does the first dollar come from?"
+Once we enforce the Double-Entry rule ("Money must come from somewhere"), we hit a logical wall: **How do we introduce money into the system?**
+If Alice deposits $100, we can't just "Credit Alice". We must "Debit" something. But if the system starts at zero, debiting anything makes it negative.
 
-### Architecting a Double-Entry Ledger for Digital Wallets
+*   **The Dilemma**: We need a source of funds that *can* go negative without breaking physics.
 
-#### Introduction
-In the world of Fintech, the most fundamental challenge isn't moving money; it is tracking it correctly. When building a digital wallet or payment system (similar to PayPal or a Neo-bank), developers often encounter a logical paradox at the very beginning: **"Where does the first dollar come from?"**
-
-If every transaction requires a source and a destination, how do you introduce funds into a system that starts with a zero balance? This section explores the business logic and architectural patterns behind solving this problem using Double-Entry Bookkeeping, Account Types, and the concept of the Genesis Account.
-
-#### 1. The Core Dilemma: "You Can't Subtract from Zero"
-In a naive implementation of a ledger, developers might apply a single rule for all accounts:
-*   **Credit**: Subtract money (Spend).
-*   **Debit**: Add money (Receive).
-
-**The Problem**: When you attempt to "seed" the system—for example, giving a user named Alice her first $100—you must take that money from a system account (let's call it "Genesis").
-*   **Transaction**: Credit Genesis $100 -> Debit Alice $100.
-*   **Result**: The system checks Genesis, sees a balance of 0, attempts to subtract 100, and throws an "Insufficient Funds" error.
-
-To solve this, we must introduce **Account Types**, which change the mathematical rules of the ledger.
-
-#### 2. The Solution: ASSET vs. EQUITY
-To build a compliant financial system, we must classify accounts into two distinct categories with opposing behaviors. This is based on the fundamental accounting equation: `Assets = Liabilities + Equity`.
-
-**The Rules of Physics**
+### 3. The Solution: ASSET vs. EQUITY
+To solve the Genesis Paradox, we use Accounting Physics. We classify accounts into two types with opposing behaviors:
 
 | Account Type | Real-World Analog | Debit Behavior | Credit Behavior |
 | :--- | :--- | :--- | :--- |
 | **ASSET** | User Wallets (Alice, Bob) | **Increase (+)** (Receiving Funds) | **Decrease (-)** (Spending Funds) |
 | **EQUITY** | The System Source (Genesis) | **Decrease (-)** (Burning Funds) | **Increase (+)** (Minting Funds) |
 
-**The "Genesis" Concept**
-The Genesis Account is an **EQUITY** account. It does not represent a "vault" that holds money; rather, it represents the *source* or the net worth of the system.
-When we Credit Genesis, we are not spending. We are increasing the system's capital. This allows us to "mint" money into existence without needing a prior balance.
+**The "Genesis" Account**
+*   **Type**: `EQUITY`
+*   **Role**: It represents the **System's Capital**. When we "Debit" Alice (Asset +), we "Credit" Genesis (Equity +). This records that the system has *issued* liability.
 
-#### 3. Financial Workflows (The Lifecycle of Money)
+### 4. Financial Workflows
+**A. Minting (Depositing Funds)**
+`Genesis (Credit 100) -> Alice (Debit 100)`
+*   Alice's Balance: +$100.
+*   System Capital: +$100. (Balanced)
 
-**A. Minting (Deposits / Cash-In)**
-When Alice deposits $100 via her bank, the system must create a digital representation of that money.
-*   **Action**: Credit Genesis $100, Debit Alice $100.
-*   **Logic**: The system capital increases (Genesis +100), and Alice's asset increases (Alice +100). The equation remains balanced.
+**B. Peer-to-Peer Transfer (Moving Funds)**
+`Alice (Credit 50) -> Bob (Debit 50)`
+*   Alice: -50.
+*   Bob: +50.
+*   System Capital: Unchanged.
 
-**B. Peer-to-Peer Transfer with Revenue (The Business Model)**
-Alice sends $100 to Bob. The platform charges a $2.00 fee. This requires a Split Transaction.
-*   **Action**:
-    1.  Credit Alice $100.00 (Full amount leaves Alice).
-    2.  Debit Bob $98.00 (Net amount enters Bob).
-    3.  Credit Revenue Account $2.00 (Wait! Revenue behaves like Equity/Liability, but in our system we use an Asset Wallet for collection).
-    *   *System Note*: In this codebase, the **Company Revenue** account is treated as an **ASSET** (Debit to Increase) aka "Company Wallet" to simplify collection.
-    *   *Correction*: Therefore, we **Debit** the Revenue Account $2.00.
+**C. Fee Collection (The Business Model)**
+For a $50 transfer with a 10% fee:
+1.  `Alice (Credit 50)` -> Leaves Alice.
+2.  `Bob (Debit 45)` -> Enters Bob.
+3.  `Company Revenue (Debit 5)` -> Enters Company Wallet (Asset).
 
-**C. Redemption (Withdrawal / Cash-Out)**
-Alice withdraws $100 to her real bank account. We must "destroy" the digital value.
-*   **Action**: Credit Alice $100, Debit Genesis $100.
-*   **Logic**: Alice's balance returns to zero. The Genesis balance (system liability) reduces by 100. The loop is closed.
+### 5. Advanced Concepts: Event Sourcing
 
-#### 4. The Real World: The "FBO" Model
-A critical distinction must be made between the System Ledger (Database) and Real Money (Bank).
+**The Problem: Loss of History**
+In traditional "State-Based" systems, databases overwrite data.
+*   *Monday*: Alice has $100. (Database says: `Balance=100`)
+*   *Tuesday*: Alice spends $50. (Database says: `Balance=50`)
+We have lost the information that she *ever* had $100. If we suspect a bug caused the balance to drop, we cannot prove it. We have lost the narrative.
 
-**How Companies like PayPal Work**
-PayPal does not act as a central bank; they cannot print money. They operate on a 1:1 Backing Model.
-1.  **Custody**: When users deposit money, PayPal moves the real funds into a pooled bank account known as an **FBO Account** (For Benefit Of).
-2.  **Mirroring**: The digital balance in the user's app is merely a "mirror" or a claim against those funds sitting in the FBO account.
+**The Solution: Store Events, Not State**
+Event Sourcing flips the model. We do not store the "Current Balance". We store the *immutable facts* of what happened.
 
-**The Golden Rule**: `Sum(User Wallets) <= Real Cash in Bank`
-If the Genesis balance in the database exceeds the actual cash in the bank account, the company is insolvent.
+*   **Event 1**: `AccountCreated` (Balance 0)
+*   **Event 2**: `FundsDeposited` (Amount: +100)
+*   **Event 3**: `TransferSent` (Amount: -50)
 
-#### 5. Architecture: The Layers of Payment
-How does a Fintech connect the entire world? It uses a layered architecture:
+To find the current balance, we simply replay the math: `0 + 100 - 50 = $50`.
 
-*   **The Card Rails (Visa/Mastercard)**: Used for instant consumer reach. Acts as a fast highway for moving funds between user banks and the Fintech's FBO account.
-*   **Correspondent Banking (SWIFT)**: Used for cross-border settlements. Since a US bank cannot talk directly to an Egyptian bank, they use intermediary "Correspondent Banks" (like JP Morgan) to bridge the gap.
-*   **The Ledger Layer (The "Instant" Illusion)**: Real bank transfers take days (Settlement). Fintechs (like PayPal) provide instant transfers between users by simply updating their **internal database** (Asset/Equity logic) 
-#### 6. Advanced Concepts: Event Sourcing
-While this specific implementation relies on **State-Based Persistence** (storing the current balance in a database column for locking efficiency), high-scale ledger systems often utilize **Event Sourcing**.
+**Implementation in this Project**
+While this ledger uses a "Snapshot" approach (storing the current balance column) for performance and locking efficiency, it strictly adheres to Event Sourcing principles for data integrity:
+*   **Immutability**: The `Transaction` table is never updated or deleted. It is an append-only log.
+*   **Replayability**: If the `Account` table were corrupted or deleted, we could theoretically rebuild every user's balance to the exact penny by replaying the `Transaction` history.
+*   **Audit**: The database *is* the audit log.
 
-**The Concept**:
-Instead of storing "Current State" (e.g., `Alice Balance: $50`), you store only the **events** that led to that state.
-*   `Event 1`: AccountOpened (Balance = 0)
-*   `Event 2`: FundsDeposited (+$100)
-*   `Event 3`: FundsTransferred (-$50)
+---
 
-**Deriving State**:
-To determine the balance, the system "replays" all events from the beginning of time: `0 + 100 - 50 = $50`.
+## Domain Driven Design (DDD)
 
-**Benefits**:
-1.  **Time Travel**: "What was Alice's balance exactly 30 days ago?" -> Replay events up to that timestamp.
-2.  **Perfect Audit**: The database *is* the audit log. History cannot be mutated, only appended to.
-3.  **Resilience**: If the balance cache becomes corrupted, it can be rebuilt perfectly from the event log.
+Ideally, complex business software should be built around a rich model of the domain. DDD is the philosophy we used to ensure the software matches the mental model of financial experts.
 
-**Our Approach (Hybrid)**:
-This project uses a hybrid, pragmatic approach common in many banking systems:
-*   **State (Account Entity)**: We store the current balance (Snapshot) to allow for performant `SELECT FOR UPDATE` locking and instant reads.
-*   **History (Transaction/Posting Entities)**: We effectively store the "Events" as the Transaction Log. The Balance is the "Materialized View" of this log.
+### Why DDD?
+Financial systems are complex. The rules for money movement, currency validation, and account types are not "technical" constraints—they are **Business Invariants**. DDD allows us to encapsulate these rules in the core, preventing invalid states (like creating money out of thin air or unbalanced transactions).
 
-#### Conclusion
-Building a financial system requires a shift in mindset from simple arithmetic to **Accounting Logic**. By utilizing Account Types (Asset vs. Equity), we solve the "creation of money" problem elegantly.
+### 1. Strategic Design
+Strategic design deals with large-scale architectural decisions and how different parts of the system interact.
 
-The Genesis Account is not a debt; it is a record of the value the system has issued. By keeping the Revenue separate from Genesis, and strictly validating that digital assets match real-world bank balances, we ensure a robust, auditable, and profitable financial platform.
+*   **Bounded Context**: The "Ledger" is its own Bounded Context. It has a specific language (Ubiquitous Language) where terms like "Posting", "Debit", and "Credit" have precise mathematical meanings, distinct from how "Credit" might be used in a "Marketing" context (e.g., "Credits" as points).
+*   **Problem Space**: The business problem is tracking value exchange securely.
+*   **Solution Space**: Our Hexagonal Architecture, separating the Domain Core from the Web/Database adapters.
 
+### 2. Tactical Design
+Tactical design focuses on the building blocks within the domain model.
 
+*   **Aggregate Root**:
+    *   `Transaction`: This is the primary Aggregate. A transaction is a cluster of `Postings`. The Transaction ensures that the sum of all postings is **Zero** (Balance Check) before it can be created. You cannot persist a `Posting` without its parent `Transaction`.
+    *   `Account`: Manages its own balance and enforces locking rules.
+*   **Value Objects**:
+    *   `Money`: Represents an amount and a currency (e.g., `100 USD`). It is immutable. Using primitives like `BigDecimal` directly is dangerous (currency mismatch bugs).
+*   **Use Cases**:
+    *   We model user intents explicitly (`DepositFundsCommand`, `TransferFundsCommand`) rather than generic CRUD operations. This exposes the *Intent* of the business action.
+
+---
+
+## Features
+
+*   **Double-Entry Bookkeeping**: Ensures every transaction is balanced (Debits = Credits).
+*   **Concurrency Control**: Uses **Pessimistic Locking** (`SELECT ... FOR UPDATE`) to prevent race conditions.
+*   **Automated Transfer Fees**: 10% fee is automatically deducted from Transfers.
+*   **System Accounts Bootstrapping**: Automatically initializes "Genesis" and "Revenue" accounts.
+*   **Secure API patterns**: Hides internal system definitions (Genesis IDs) from the public API.
+
+## Architecture
+
+The project follows strict **Hexagonal Architecture** (Ports and Adapters):
+
+*   **Domain**: `com.mahmoud.ledger.domain` - Pure Java business logic (Entities, Value Objects).
+*   **Application**: `com.mahmoud.ledger.application` - Use Cases, Ports (Input/Output interfaces).
+*   **Infrastructure**: `com.mahmoud.ledger.infrastructure` - Adapters for Persistence (JPA) and Web (Spring REST).
+
+## System Accounts
+
+The system automatically bootstraps the following immutable accounts:
+
+| Account Name | Type | Interaction |
+| :--- | :--- | :--- |
+| **Genesis** | `EQUITY` | The source of all money entering the system (Deposits). |
+| **Company Revenue** | `ASSET` | Receives fees from user transfers. |
+
+## API Reference
+
+### 1. Create a User Wallet
+**POST** `/api/accounts`
+```json
+{ "name": "Alice Wallet", "currency": "USD" }
+```
+
+### 2. Deposit Funds (Genesis -> User)
+**POST** `/api/deposits`
+```json
+{ "accountId": "<ALICE_UUID>", "amount": 100, "currency": "USD" }
+```
+*   *Secure*: The system automatically debits the hidden "Genesis" Equity account.
+
+### 3. Transfer Funds (User -> User)
+**POST** `/api/transfers`
+```json
+{ "fromAccountId": "<ALICE_UUID>", "toAccountId": "<BOB_UUID>", "amount": 50, "currency": "USD" }
+```
+*   *Fee Logic*: Automatically deducts 10% fee and routes it to the "Company Revenue" account.
+
+## Testing
+
+Run the full suite:
+```bash
+mvn test
+```
+includes 25+ tests covering Unit, Integration, and Concurrency scenarios.
